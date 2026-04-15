@@ -1,7 +1,7 @@
 # <p align="center">codex-register</p>
 
 <p align="center">
-  <img alt="Version" src="https://img.shields.io/badge/version-v1.0.4-111827">
+  <img alt="Version" src="https://img.shields.io/badge/version-v1.0.5-111827">
   <img alt="GitHub Repo stars" src="https://img.shields.io/github/stars/klsf/codex-register?style=social">
 </p>
 
@@ -206,6 +206,7 @@ npm run check -- --proxy http://127.0.0.1:7890 --table
 
 - `proxiedmail`
 - `gmail`
+- `hotmail`
 - `2925`
 - `cloudflare`
 
@@ -233,7 +234,46 @@ npm run check -- --proxy http://127.0.0.1:7890 --table
 
 临时 token 获取教程见：[GMAIL_OAUTH_PLAYGROUND.md](./GMAIL_OAUTH_PLAYGROUND.md)
 
-### 3）2925
+### 3）hotmail
+
+```json
+{
+  "provider": "hotmail"
+}
+```
+
+邮箱账号放 `hotmail/tokens.txt` 文件里：
+
+`tokens.txt` 格式为：
+
+```text
+邮箱----密码----client_id----refresh_token
+```
+
+一行一个账号，例如：
+
+```text
+someone@hotmail.com----YourPassword123----a016c639-6112-4efe-b2cd-8ef74231bb97----M.Cxxxx...
+```
+
+说明：
+
+- 第 1 段：邮箱
+- 第 2 段：密码
+- 第 3 段：`client_id`
+- 第 4 段：`refresh_token`
+
+程序会：
+
+- 从 `tokens.txt` 随机取账号生成别名邮箱
+- 用 `refresh_token` 刷新访问令牌
+- 根据刷新后返回的 `scope` 自动选择：
+  - 包含 `outlook.office.com`：走 Outlook REST API
+  - 其他情况：走 Microsoft Graph
+- 读取收件箱和垃圾箱中的验证码邮件
+- 刷新后的 `refresh_token` 会回写到 `tokens.txt`
+
+### 4）2925
 
 ```json
 {
@@ -243,7 +283,7 @@ npm run check -- --proxy http://127.0.0.1:7890 --table
 }
 ```
 
-### 4）cloudflare
+### 5）cloudflare
 
 ```json
 {
@@ -273,6 +313,8 @@ Cloudflare Worker 部署说明见：[MAIL_WORKER_DEPLOY.md](./MAIL_WORKER_DEPLOY
     - Gmail API access token
 - `gmailEmailAddress`
     - Gmail 主邮箱地址
+- `hotmail`
+    - 使用 `./hotmail/tokens.txt` 作为 Hotmail/Outlook 账号来源
 - `2925EmailAddress`
     - 2925 邮箱账号
 - `2925Password`

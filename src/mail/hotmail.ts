@@ -1,12 +1,16 @@
 // @ts-nocheck
-import {readFile, readdir, writeFile} from "node:fs/promises";
+import {readFile, writeFile} from "node:fs/promises";
 import path from "node:path";
 import {generateEmailName} from "./generate-email-name.js";
 import {findLatestVerificationMail} from "./verification-matcher.js";
 
 const HOTMAIL_TOKEN_DIR = path.resolve(process.cwd(), "hotmail");
+const HOTMAIL_TOKENS_FILE = path.join(HOTMAIL_TOKEN_DIR, "tokens.txt");
+const HOTMAIL_REST_BASE_URL = "https://outlook.office.com/api/v2.0";
 const HOTMAIL_GRAPH_BASE_URL = "https://graph.microsoft.com/v1.0";
 const HOTMAIL_OAUTH_TOKEN_URL = "https://login.microsoftonline.com/consumers/oauth2/v2.0/token";
+const HOTMAIL_DEFAULT_REDIRECT_URI = "http://localhost:8787/callback";
+const HOTMAIL_DEFAULT_SCOPE = "openid profile User.Read Mail.ReadWrite Mail.Send Mail.Read";
 const HOTMAIL_POLL_ATTEMPTS = 36;
 const HOTMAIL_POLL_INTERVAL_MS = 5000;
 const HOTMAIL_MESSAGE_FETCH_LIMIT = 10;
@@ -16,6 +20,11 @@ let accountCache = null;
 
 function normalizeEmail(value) {
     return String(value ?? "").trim().toLowerCase();
+}
+
+function resolveApiMode(account) {
+    const scope = String(account?.scope ?? "").toLowerCase();
+    return scope.includes("outlook.office.com") ? "rest" : "graph";
 }
 
 function decodeJwtPayload(token) {
@@ -56,14 +65,47 @@ function isAccessTokenExpired(account) {
     return Date.now() >= expireAtMs - 60 * 1000;
 }
 
-function parseAccountFileName(fileName) {
-    const match = String(fileName).match(/^(.+?)--(.+)\.json$/i);
-    const loginHint = normalizeEmail(match?.[1] ?? "");
-    const sourceAccount = String(match?.[2] ?? "").trim();
-    return {
-        loginHint,
-        sourceAccount,
-    };
+async function loadTextAccounts() {
+    try {
+        const raw = await readFile(HOTMAIL_TOKENS_FILE, "utf8");
+        return raw
+            .split(/\r?\n/)
+            .map((line) => line.trim())
+            .filter(Boolean)
+            .map((line, index) => {
+                const [email, password, clientId, refreshToken] = line.split("----");
+                const loginHint = normalizeEmail(email);
+                const account = {
+                    sourceType: "txt",
+                    fileName: path.basename(HOTMAIL_TOKENS_FILE),
+                    filePath: HOTMAIL_TOKENS_FILE,
+                    lineIndex: index,
+                    lineRaw: line,
+                    loginHint,
+                    password: String(password ?? "").trim(),
+                    sourceAccount: loginHint,
+                    tenant: "consumers",
+                    clientId: String(clientId ?? "").trim(),
+                    redirectUri: "",
+                    scope: "",
+                    tokenType: "Bearer",
+                    accessToken: "",
+                    refreshToken: String(refreshToken ?? "").trim(),
+                    idToken: "",
+                    obtainedAt: "",
+                    expiresIn: 0,
+                    extExpiresIn: 0,
+                    raw: {},
+                };
+                return loginHint && account.clientId && account.refreshToken ? account : null;
+            })
+            .filter(Boolean);
+    } catch (error) {
+        if (error?.code === "ENOENT") {
+            return [];
+        }
+        throw error;
+    }
 }
 
 async function loadAccounts() {
@@ -71,120 +113,120 @@ async function loadAccounts() {
         return accountCache;
     }
 
-    const fileNames = await readdir(HOTMAIL_TOKEN_DIR);
-    const accounts = [];
-
-    for (const fileName of fileNames) {
-        if (!fileName.toLowerCase().endsWith(".json")) {
-            continue;
-        }
-
-        const filePath = path.join(HOTMAIL_TOKEN_DIR, fileName);
-        const raw = await readFile(filePath, "utf8");
-        const parsed = JSON.parse(raw);
-        const fileInfo = parseAccountFileName(fileName);
-        const loginHint = normalizeEmail(parsed?.login_hint ?? fileInfo.loginHint);
-        const accessToken = String(parsed?.access_token ?? "").trim();
-        const refreshToken = String(parsed?.refresh_token ?? "").trim();
-
-        if (!loginHint || !accessToken || !refreshToken) {
-            continue;
-        }
-
-        accounts.push({
-            fileName,
-            filePath,
-            loginHint,
-            sourceAccount: String(parsed?.source_account ?? fileInfo.sourceAccount),
-            tenant: String(parsed?.tenant ?? "consumers") || "consumers",
-            clientId: String(parsed?.client_id ?? "").trim(),
-            redirectUri: String(parsed?.redirect_uri ?? "").trim(),
-            scope: String(parsed?.scope ?? "openid profile User.Read Mail.ReadWrite Mail.Send Mail.Read").trim(),
-            tokenType: String(parsed?.token_type ?? "Bearer").trim(),
-            accessToken,
-            refreshToken,
-            idToken: String(parsed?.id_token ?? "").trim(),
-            obtainedAt: String(parsed?.obtained_at ?? ""),
-            expiresIn: Number(parsed?.expires_in ?? 0),
-            extExpiresIn: Number(parsed?.ext_expires_in ?? 0),
-            raw: parsed,
-        });
-    }
-
+    const textAccounts = await loadTextAccounts();
+    const accounts = textAccounts;
     if (!accounts.length) {
-        throw new Error(`未在目录找到 Hotmail token 文件: ${HOTMAIL_TOKEN_DIR}`);
+        throw new Error(`未在文件找到 Hotmail token: ${HOTMAIL_TOKENS_FILE}`);
     }
 
     accountCache = accounts;
     return accounts;
 }
 
-async function persistAccount(account) {
-    const payload = {
-        ...account.raw,
-        obtained_at: account.obtainedAt,
-        tenant: account.tenant,
-        client_id: account.clientId,
-        redirect_uri: account.redirectUri,
-        login_hint: account.loginHint,
-        source_account: account.sourceAccount,
-        token_type: account.tokenType,
-        scope: account.scope,
-        expires_in: account.expiresIn,
-        ext_expires_in: account.extExpiresIn,
-        access_token: account.accessToken,
-        refresh_token: account.refreshToken,
-        id_token: account.idToken,
-    };
+async function persistTextAccount(account) {
+    const raw = await readFile(HOTMAIL_TOKENS_FILE, "utf8");
+    const lines = raw.split(/\r?\n/);
+    const nextLine = [
+        account.loginHint,
+        account.password ?? "",
+        account.clientId ?? "",
+        account.refreshToken ?? "",
+    ].join("----");
+    const index = Number(account.lineIndex ?? -1);
 
-    await writeFile(account.filePath, `${JSON.stringify(payload, null, 2)}\n`, "utf8");
-    account.raw = payload;
+    if (index >= 0 && index < lines.length) {
+        lines[index] = nextLine;
+    } else {
+        lines.push(nextLine);
+        account.lineIndex = lines.length - 1;
+    }
+
+    await writeFile(HOTMAIL_TOKENS_FILE, `${lines.filter((line) => line != null).join("\n").replace(/\n+$/g, "")}\n`, "utf8");
+    account.lineRaw = nextLine;
+}
+
+async function persistAccount(account) {
+    await persistTextAccount(account);
+}
+
+function buildRefreshVariants(account) {
+    const redirectUri = String(account.redirectUri ?? "").trim();
+    const scope = String(account.scope ?? "").trim();
+    const variants = [
+        {redirectUri, scope},
+        {redirectUri: "", scope: ""},
+        {redirectUri: HOTMAIL_DEFAULT_REDIRECT_URI, scope: ""},
+        {redirectUri, scope: HOTMAIL_DEFAULT_SCOPE},
+    ];
+    const seen = new Set();
+
+    return variants.filter((item) => {
+        const key = `${item.redirectUri}|||${item.scope}`;
+        if (seen.has(key)) {
+            return false;
+        }
+        seen.add(key);
+        return true;
+    });
 }
 
 async function refreshAccessToken(account) {
-    if (!account.clientId || !account.redirectUri || !account.refreshToken) {
+    if (!account.clientId || !account.refreshToken) {
         throw new Error(`Hotmail token 缺少刷新所需字段: ${account.fileName}`);
     }
 
-    const body = new URLSearchParams({
-        client_id: account.clientId,
-        grant_type: "refresh_token",
-        refresh_token: account.refreshToken,
-        redirect_uri: account.redirectUri,
-        scope: account.scope || "openid profile User.Read Mail.ReadWrite Mail.Send Mail.Read",
-    });
+    let lastError = "";
+    for (const variant of buildRefreshVariants(account)) {
+        const body = new URLSearchParams({
+            client_id: account.clientId,
+            grant_type: "refresh_token",
+            refresh_token: account.refreshToken,
+        });
 
-    const response = await fetch(HOTMAIL_OAUTH_TOKEN_URL, {
-        method: "POST",
-        headers: {
-            Accept: "application/json",
-            "Content-Type": "application/x-www-form-urlencoded",
-        },
-        body: body.toString(),
-    });
+        if (variant.redirectUri) {
+            body.set("redirect_uri", variant.redirectUri);
+        }
+        if (variant.scope) {
+            body.set("scope", variant.scope);
+        }
 
-    const rawBody = await response.text();
-    if (!response.ok) {
-        throw new Error(`Hotmail 刷新 token 失败: ${response.status} body=${rawBody}`);
+        const response = await fetch(HOTMAIL_OAUTH_TOKEN_URL, {
+            method: "POST",
+            headers: {
+                Accept: "application/json",
+                "Content-Type": "application/x-www-form-urlencoded",
+            },
+            body: body.toString(),
+        });
+
+        const rawBody = await response.text();
+        if (!response.ok) {
+            lastError = `redirect=${variant.redirectUri || "(empty)"} scope=${variant.scope || "(empty)"} status=${response.status} body=${rawBody}`;
+            continue;
+        }
+
+        const payload = JSON.parse(rawBody);
+        account.accessToken = String(payload?.access_token ?? "").trim();
+        account.refreshToken = String(payload?.refresh_token ?? account.refreshToken).trim();
+        account.idToken = String(payload?.id_token ?? account.idToken ?? "").trim();
+        account.tokenType = String(payload?.token_type ?? account.tokenType ?? "Bearer").trim();
+        account.scope = String(payload?.scope ?? variant.scope ?? account.scope).trim();
+        account.redirectUri = variant.redirectUri || account.redirectUri || HOTMAIL_DEFAULT_REDIRECT_URI;
+        account.expiresIn = Number(payload?.expires_in ?? account.expiresIn ?? 0);
+        account.extExpiresIn = Number(payload?.ext_expires_in ?? account.extExpiresIn ?? 0);
+        account.obtainedAt = new Date().toISOString();
+        account.apiMode = resolveApiMode(account);
+
+        await persistAccount(account);
+        console.log(`hotmailTokenRefreshed: ${account.loginHint} mode=${account.apiMode} scope=${account.scope}`);
+        return account;
     }
 
-    const payload = JSON.parse(rawBody);
-    account.accessToken = String(payload?.access_token ?? "").trim();
-    account.refreshToken = String(payload?.refresh_token ?? account.refreshToken).trim();
-    account.idToken = String(payload?.id_token ?? account.idToken ?? "").trim();
-    account.tokenType = String(payload?.token_type ?? account.tokenType ?? "Bearer").trim();
-    account.scope = String(payload?.scope ?? account.scope).trim();
-    account.expiresIn = Number(payload?.expires_in ?? account.expiresIn ?? 0);
-    account.extExpiresIn = Number(payload?.ext_expires_in ?? account.extExpiresIn ?? 0);
-    account.obtainedAt = new Date().toISOString();
-
-    await persistAccount(account);
-    console.log(`hotmailTokenRefreshed: ${account.loginHint}`);
-    return account;
+    throw new Error(`Hotmail 刷新 token 失败: ${lastError}`);
 }
 
 async function ensureFreshAccount(account) {
-    if (isAccessTokenExpired(account)) {
+    if (!account.accessToken || isAccessTokenExpired(account)) {
         await refreshAccessToken(account);
     }
     return account;
@@ -195,6 +237,29 @@ function buildAuthHeaders(account) {
         Accept: "application/json",
         Authorization: `Bearer ${account.accessToken}`,
     };
+}
+
+async function restRequest(account, url) {
+    await ensureFreshAccount(account);
+
+    let response = await fetch(url, {
+        method: "GET",
+        headers: buildAuthHeaders(account),
+    });
+
+    if (response.status === 401) {
+        await refreshAccessToken(account);
+        response = await fetch(url, {
+            method: "GET",
+            headers: buildAuthHeaders(account),
+        });
+    }
+
+    if (!response.ok) {
+        throw new Error(`Hotmail REST 请求失败: ${response.status} body=${await response.text()}`);
+    }
+
+    return response.json();
 }
 
 async function graphRequest(account, url) {
@@ -238,33 +303,43 @@ function normalizeRecipientList(recipients) {
         return [];
     }
     return recipients
-        .map((item) => normalizeEmail(item?.emailAddress?.address ?? item?.address ?? ""))
+        .map((item) => normalizeEmail(item?.EmailAddress?.Address ?? item?.emailAddress?.address ?? item?.address ?? ""))
         .filter(Boolean);
 }
 
 function normalizeMessage(message, folderId) {
-    const bodyContent = String(message?.body?.content ?? "");
+    const bodyContent = String(message?.Body?.Content ?? message?.body?.content ?? "");
     return {
-        id: String(message?.id ?? ""),
+        id: String(message?.Id ?? message?.id ?? ""),
         folderId,
-        subject: String(message?.subject ?? ""),
+        subject: String(message?.Subject ?? message?.subject ?? ""),
         bodyContent,
-        bodyPreview: String(message?.bodyPreview ?? ""),
-        from: normalizeEmail(message?.from?.emailAddress?.address ?? ""),
-        toRecipients: normalizeRecipientList(message?.toRecipients),
-        receivedDateTime: String(message?.receivedDateTime ?? ""),
-        receivedAtMs: Date.parse(String(message?.receivedDateTime ?? "")) || 0,
+        bodyPreview: String(message?.BodyPreview ?? message?.bodyPreview ?? ""),
+        from: normalizeEmail(message?.From?.EmailAddress?.Address ?? message?.from?.emailAddress?.address ?? ""),
+        toRecipients: normalizeRecipientList(message?.ToRecipients ?? message?.toRecipients),
+        receivedDateTime: String(message?.ReceivedDateTime ?? message?.receivedDateTime ?? ""),
+        receivedAtMs: Date.parse(String(message?.ReceivedDateTime ?? message?.receivedDateTime ?? "")) || 0,
         raw: message,
     };
 }
 
 async function listFolderMessages(account, folderId) {
-    const url = new URL(`${HOTMAIL_GRAPH_BASE_URL}/me/mailFolders/${encodeURIComponent(folderId)}/messages`);
+    const apiMode = account.apiMode ?? resolveApiMode(account);
+    const isRest = apiMode === "rest";
+    const url = new URL(
+        isRest
+            ? `${HOTMAIL_REST_BASE_URL}/me/mailfolders/${encodeURIComponent(folderId)}/messages`
+            : `${HOTMAIL_GRAPH_BASE_URL}/me/mailFolders/${encodeURIComponent(folderId)}/messages`,
+    );
     url.searchParams.set("$top", String(HOTMAIL_MESSAGE_FETCH_LIMIT));
-    url.searchParams.set("$orderby", "receivedDateTime desc");
-    url.searchParams.set("$select", "id,subject,bodyPreview,body,from,toRecipients,receivedDateTime");
+    url.searchParams.set("$orderby", isRest ? "ReceivedDateTime desc" : "receivedDateTime desc");
+    if (!isRest) {
+        url.searchParams.set("$select", "id,subject,bodyPreview,body,from,toRecipients,receivedDateTime");
+    }
 
-    const payload = await graphRequest(account, url);
+    const payload = isRest
+        ? await restRequest(account, url)
+        : await graphRequest(account, url);
     return Array.isArray(payload?.value)
         ? payload.value.map((item) => normalizeMessage(item, folderId))
         : [];
@@ -312,7 +387,7 @@ async function resolveAccountForEmail(email) {
     });
 
     if (matched) {
-        aliasAccountMap.set(normalizedEmail, matched);
+        aliasAccountMap.set(normalizeEmail(email), matched);
         return matched;
     }
 
