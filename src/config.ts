@@ -15,6 +15,7 @@ interface AppConfigFile {
     cloudflareApiBaseUrl?: unknown;
     cloudflareApiKey?: unknown;
     defaultProxyUrl?: unknown;
+    heroSMSApiKey?: unknown;
 }
 
 export interface AppConfig {
@@ -29,6 +30,7 @@ export interface AppConfig {
     cloudflareApiBaseUrl: string;
     cloudflareApiKey: string;
     defaultProxyUrl: string;
+    heroSMSApiKey?: string;
 }
 
 const DEFAULT_CONFIG: AppConfig = {
@@ -43,6 +45,7 @@ const DEFAULT_CONFIG: AppConfig = {
     cloudflareApiBaseUrl: "",
     cloudflareApiKey: "",
     defaultProxyUrl: "http://127.0.0.1:10808",
+    heroSMSApiKey: undefined
 };
 
 function normalizeNumber(value: unknown, fallback: number): number {
@@ -108,6 +111,10 @@ function loadConfig(): AppConfig {
             typeof parsed.defaultProxyUrl === "string"
                 ? parsed.defaultProxyUrl.trim()
                 : DEFAULT_CONFIG.defaultProxyUrl,
+        heroSMSApiKey:
+          typeof parsed.heroSMSApiKey === "string"
+            ? parsed.heroSMSApiKey.trim()
+            : DEFAULT_CONFIG.heroSMSApiKey,
     };
 }
 

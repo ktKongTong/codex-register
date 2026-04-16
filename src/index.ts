@@ -1,6 +1,7 @@
 import {appConfig} from "./config.js";
 import {generateRandomDeviceProfile} from "./device-profile.js";
 import {OpenAIClient} from "./openai.js";
+import {createSMSBroker} from "./sms/index.js";
 
 function readArgValue(flag: string): string {
     const index = process.argv.indexOf(flag);
@@ -23,6 +24,8 @@ function readNumberArg(flag: string): number | null {
     return Number.isFinite(value) && value > 0 ? value : null;
 }
 
+const smsBroker = appConfig.heroSMSApiKey ? createSMSBroker(appConfig.heroSMSApiKey) : undefined
+
 async function runOnce(): Promise<void> {
     const email = readArgValue("--email").trim();
     const manualOtp = hasFlag("--otp");
@@ -35,6 +38,7 @@ async function runOnce(): Promise<void> {
             deviceProfile,
             manualMode: manualOtp,
             signupScreenHint: "signup",
+            smsBroker
         });
         const result = await client.authRegisterAndAuthorizeHTTP();
         console.log(
@@ -48,6 +52,7 @@ async function runOnce(): Promise<void> {
         password: appConfig.defaultPassword,
         deviceProfile,
         manualMode: manualOtp,
+        smsBroker
     });
     await registerClient.authRegisterHTTP();
 
@@ -56,6 +61,7 @@ async function runOnce(): Promise<void> {
         password: appConfig.defaultPassword,
         deviceProfile,
         manualMode: manualOtp,
+        smsBroker
     });
     const result = await loginClient.authLoginHTTP();
     console.log(
@@ -64,6 +70,7 @@ async function runOnce(): Promise<void> {
 }
 
 async function main() {
+    const smsBroker = appConfig.heroSMSApiKey ? createSMSBroker(appConfig.heroSMSApiKey) : undefined
     let round = 0;
     let successCount = 0;
     let failCount = 0;
@@ -83,6 +90,7 @@ async function main() {
                 password: appConfig.defaultPassword,
                 deviceProfile,
                 manualMode: manualOtp,
+                smsBroker,
             });
             const result = await client.authLoginHTTP();
             console.log(
