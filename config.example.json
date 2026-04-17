@@ -10,5 +10,6 @@
   "2925Password": "",
   "cloudflareEmailDomain": "",
   "cloudflareApiBaseUrl": "",
-  "cloudflareApiKey": ""
+  "cloudflareApiKey": "",
+  "heroSMSApiKey": ""
 }
