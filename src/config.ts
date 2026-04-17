@@ -16,6 +16,10 @@ interface AppConfigFile {
     cloudflareApiKey?: unknown;
     defaultProxyUrl?: unknown;
     heroSMSApiKey?: unknown;
+    heroSMSCountry?: unknown;
+    heroSMSMaxPrice?: unknown;
+    heroSMSPollAttempts?: unknown;
+    heroSMSPollIntervalMs?: unknown;
 }
 
 export interface AppConfig {
@@ -31,6 +35,10 @@ export interface AppConfig {
     cloudflareApiKey: string;
     defaultProxyUrl: string;
     heroSMSApiKey?: string;
+    heroSMSCountry: number;
+    heroSMSMaxPrice: number;
+    heroSMSPollAttempts: number;
+    heroSMSPollIntervalMs: number;
 }
 
 const DEFAULT_CONFIG: AppConfig = {
@@ -45,7 +53,11 @@ const DEFAULT_CONFIG: AppConfig = {
     cloudflareApiBaseUrl: "",
     cloudflareApiKey: "",
     defaultProxyUrl: "http://127.0.0.1:10808",
-    heroSMSApiKey: undefined
+    heroSMSApiKey: undefined,
+    heroSMSCountry: 52,
+    heroSMSMaxPrice: 0.05,
+    heroSMSPollAttempts: 10,
+    heroSMSPollIntervalMs: 3000
 };
 
 function normalizeNumber(value: unknown, fallback: number): number {
@@ -115,6 +127,23 @@ function loadConfig(): AppConfig {
           typeof parsed.heroSMSApiKey === "string"
             ? parsed.heroSMSApiKey.trim()
             : DEFAULT_CONFIG.heroSMSApiKey,
+        heroSMSCountry:
+          typeof parsed.heroSMSCountry === "number"
+            ? parsed.heroSMSCountry
+            : DEFAULT_CONFIG.heroSMSCountry,
+        heroSMSMaxPrice:
+          typeof parsed.heroSMSMaxPrice === "number"
+            ? parsed.heroSMSMaxPrice
+            : DEFAULT_CONFIG.heroSMSMaxPrice,
+        heroSMSPollAttempts:
+          typeof parsed.heroSMSPollAttempts === "number"
+            ? parsed.heroSMSPollAttempts
+            : DEFAULT_CONFIG.heroSMSPollAttempts,
+        heroSMSPollIntervalMs:
+          typeof parsed.heroSMSPollIntervalMs === "number"
+            ? parsed.heroSMSPollIntervalMs
+            : DEFAULT_CONFIG.heroSMSPollIntervalMs,
+
     };
 }
 

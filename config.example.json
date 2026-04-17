@@ -11,5 +11,9 @@
   "cloudflareEmailDomain": "",
   "cloudflareApiBaseUrl": "",
   "cloudflareApiKey": "",
-  "heroSMSApiKey": ""
+  "heroSMSApiKey": "",
+  "heroSMSCountry": 52,
+  "heroSMSMaxPrice": 0.05,
+  "heroSMSPollAttempts": 10,
+  "heroSMSPollIntervalMs": 3000
 }

@@ -1,25 +1,30 @@
 import { ActivationBroker } from "./activation-broker.js";
 import { createHeroSmsProvider } from "./heroSMS.js";
 
-export const createSMSBroker = (apiKey: string) => {
+type HeroSMSBrokerOption = {
+  apiKey: string;
+  country: number;
+  maxPrice: number;
+  pollAttempts: number;
+  pollIntervalMs: number;
+}
+
+export const createSMSBroker = (option: HeroSMSBrokerOption) => {
   return new ActivationBroker(
     createHeroSmsProvider({
-      apiKey: apiKey,
-      // 目前配置写死，暂未写入配置文件
+      apiKey: option.apiKey,
       defaultRequestOptions: {
         // openai
         service: "dr",
-        // 泰国
-        country: 52,
-        // $0.05
-        maxPrice: 0.05,
+        country: option.country,
+        maxPrice: option.maxPrice,
         fixedPrice: true,
       },
       defaultWaitForCodeOptions: {
         markReady: false,
         completeOnCode: false,
-        pollAttempts: 10,
-        pollIntervalMs: 2000,
+        pollAttempts: option.pollAttempts,
+        pollIntervalMs: option.pollIntervalMs,
       },
     }),
   );

@@ -59,7 +59,7 @@ export interface ActivationLease extends SmsActivation {
 export interface ISMSActivationBroker {
   getActivation(): Promise<ActivationLease>;
   markAsSucceed(): Promise<void>;
-  markAsFailed(): Promise<void>;
+  markAsFailed(rotate?: boolean): Promise<void>;
 }
 
 export interface ActivationBrokerState<Activation extends SmsActivation> {
@@ -196,11 +196,11 @@ export class ActivationBroker<
     await this.finishAttempt("success");
   }
 
-  async markAsFailed(): Promise<void> {
-    await this.finishAttempt("failed");
+  async markAsFailed(rotate?: boolean): Promise<void> {
+    await this.finishAttempt("failed", rotate);
   }
 
-  private async finishAttempt(outcome: ActivationAttemptOutcome): Promise<void> {
+  private async finishAttempt(outcome: ActivationAttemptOutcome, rotate?: boolean): Promise<void> {
     const activation = this.currentActivation;
     if (!activation || !this.usage) {
       throw new Error("当前没有可结束的 activation");
@@ -230,6 +230,7 @@ export class ActivationBroker<
     // 因此判断成功数 >= 3 进行 reset
     // 至于 failureCount，失败只会进入新一轮，多次失败不会有什么影响，仅添加一个上限防止无限失败，以求尽可能复用同一个号码
     if (
+      rotate ||
       // activation.canRequestAnotherSms === false ||
       this.isExpired(activation) ||
       this.usage.successCount >= 3 ||

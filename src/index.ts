@@ -24,7 +24,14 @@ function readNumberArg(flag: string): number | null {
     return Number.isFinite(value) && value > 0 ? value : null;
 }
 
-const smsBroker = appConfig.heroSMSApiKey ? createSMSBroker(appConfig.heroSMSApiKey) : undefined
+
+const smsBroker = appConfig.heroSMSApiKey ? createSMSBroker({
+    apiKey: appConfig.heroSMSApiKey,
+    pollAttempts: appConfig.heroSMSPollAttempts,
+    pollIntervalMs: appConfig.heroSMSPollIntervalMs,
+    maxPrice: appConfig.heroSMSMaxPrice,
+    country: appConfig.heroSMSCountry
+}) : undefined
 
 async function runOnce(): Promise<void> {
     const email = readArgValue("--email").trim();
@@ -70,7 +77,6 @@ async function runOnce(): Promise<void> {
 }
 
 async function main() {
-    const smsBroker = appConfig.heroSMSApiKey ? createSMSBroker(appConfig.heroSMSApiKey) : undefined
     let round = 0;
     let successCount = 0;
     let failCount = 0;

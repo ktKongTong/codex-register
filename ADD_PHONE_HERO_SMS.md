@@ -46,11 +46,25 @@
 
 在 config.example.json 中填入
 
-```json
+```jsonc
 {
-  "heroSMSApiKey": "your-api-key"
+  "heroSMSApiKey": "your-api-key",
+  "heroSMSCountry": 52, // 可选，默认为泰国
+  "heroSMSMaxPrice": 0.05, // 可选，采用固定价格，0.05
+  "heroSMSPollAttempts": 10, // 可选，一轮等待轮询次数
+  "heroSMSPollIntervalMs": 3000 // 可选，轮询间隔
 }
 ```
+
+heroSMSCountry 为 HeroSMS 平台对应的 countryCode
+
+heroSMSMaxPrice 为获取号码时的报价，可用价格会可能变动。
+
+heroSMSPollAttempts 为在进行一轮等待时，轮询 HeroSMS API 的次数，heroSMSPollIntervalMs 则为单次轮询的等待时间。
+
+HeroSMS 要求单次申请最低的可取消/可完成间隔为 2min，因此配置合适的间隔可以实现自动回收（Complete/Cancel) 申请的号码，自动对未使用的号码进行取消退款，建议保持默认值。
+
+
 
 ### Step4：效果
 

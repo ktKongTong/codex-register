@@ -307,9 +307,9 @@ export class OpenAIClient {
             this.logProgress('4-b', totalSteps, `发送短信验证码，phone=+${lease.phoneNumber}`);
             const phoneNumber = `+${lease.phoneNumber}`
             continueURL = await this.sendPhoneOtp(phoneNumber)
-              // sendPhoneOtp 过程中可能遇到 phone_max_usage_exceed 错误，需要手动标记失败
+              // sendPhoneOtp 过程中可能遇到 phone_max_usage_exceed 错误，需要手动标记失败并进行轮换
               .catch(async (e) => {
-                  await this.smsBroker?.markAsFailed()
+                  await this.smsBroker?.markAsFailed(true)
                   throw e
               });
             this.logProgress('4-c', totalSteps, `等待短信验证码`);
@@ -433,9 +433,9 @@ export class OpenAIClient {
             this.logProgress(step++, totalSteps++, `发送短信验证码，phone=+${lease.phoneNumber}`);
             const phoneNumber = `+${lease.phoneNumber}`
             continueURL = await this.sendPhoneOtp(phoneNumber)
-              // sendPhoneOtp 过程中可能遇到 phone_max_usage_exceed 错误，需要手动标记失败
+              // sendPhoneOtp 过程中可能遇到 phone_max_usage_exceed 错误，需要手动标记失败并进行轮换
               .catch(async (e) => {
-                  await this.smsBroker?.markAsFailed()
+                  await this.smsBroker?.markAsFailed(true)
                   throw e
               });
             this.logProgress(step++, totalSteps++, `等待短信验证码`);
